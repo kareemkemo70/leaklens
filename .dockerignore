@@ -1,0 +1,17 @@
+# Git
+.git
+.gitignore
+
+# Python
+**/__pycache__/
+**/*.pyc
+backend/venv/
+.env
+
+# Mobile
+mobile/
+
+# Databases & Secrets
+# We do NOT ignore firebase-adminsdk.json here so the local Docker container can boot up! 
+# When moving to cloud, we will handle secrets via env vars.
+backend/water_leak.db

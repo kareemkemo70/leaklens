@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  leaklens-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the database so it persists locally even if the container restarts
+      - ./backend/water_leak.db:/app/backend/water_leak.db

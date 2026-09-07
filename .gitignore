@@ -1,0 +1,44 @@
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+backend/water_leakage.db
+
+# Mobile
+mobile/build/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/android/local.properties
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and Dumps
+*.hprof
+*.log
+
+# Sensitive Keys & Data
+backend/firebase-adminsdk.json
+mobile/android/app/google-services.json
+backend/water_leak.db
+
+# Python Caches
+**/__pycache__/
+
+# Mobile Local & Platform Dirs
+mobile/.metadata
+mobile/devtools_options.yaml
+mobile/linux/
+mobile/macos/
+mobile/windows/

@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LeakLens — Leak Detection Dashboard</title>
+  <meta name="description" content="AI-powered water leakage detection control panel. Send sensor data and get instant anomaly detection results from the Conv1D Autoencoder model." />
+
+  <!-- Chart.js + Annotation plugin -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+  <!-- Leaflet.js — geographic map (no API key needed) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     HEADER
+     ══════════════════════════════════════════════════════════════ -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">💧</div>
+    <div class="logo-text">
+      <h1>LeakLens</h1>
+      <p>Autoencoder Anomaly Detection System</p>
+    </div>
+  </div>
+
+  <div class="header-meta">
+    <button class="btn-action btn-random" style="padding: 6px 14px; font-size: 11px; width: auto; height: 30px; border-radius: 6px; box-shadow: none;" onclick="openEngModal()">
+      <span class="btn-label" style="font-size: 12px; font-weight: 500;">+ Add Engineer</span>
+    </button>
+    <span class="meta-badge" id="modelBadge">⚙️ Mock Mode</span>
+    <span class="meta-badge">v1.0.0</span>
+    <span class="meta-badge">Window: 48 × 119</span>
+
+    <div class="header-status">
+      <div class="status-dot" id="connectionStatus"></div>
+      <span id="connectionLabel">Checking API…</span>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MAIN GRID
+     ══════════════════════════════════════════════════════════════ -->
+<main class="main">
+
+  <!-- ─────────────────────────────────────────────────────────────
+       LEFT — Control Panel
+       ───────────────────────────────────────────────────────────── -->
+  <aside>
+    <div class="panel">
+      <div class="panel-title">Control Panel</div>
+
+      <!-- Section label -->
+      <div style="font-size:10px; letter-spacing:1.5px; font-weight:600; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px;">📂 Training Data (Seen by AI)</div>
+
+      <div class="control-panel">
+
+        <!-- Leak Button -->
+        <button class="btn-action btn-leak" id="btnLeak" onclick="sendData('leak')">
+          <div class="btn-icon">🚨</div>
+          <div class="btn-info">
+            <span class="btn-label">Send Leak Data</span>
+            <span class="btn-sub">Real SCADA + pressure drop</span>
+          </div>
+          <div class="btn-spinner"></div>
+        </button>
+
+        <!-- Normal Button -->
+        <button class="btn-action btn-normal" id="btnNormal" onclick="sendData('normal')">
+          <div class="btn-icon">✅</div>
+          <div class="btn-info">
+            <span class="btn-label">Send Normal Data</span>
+            <span class="btn-sub">Real SCADA normal slice</span>
+          </div>
+          <div class="btn-spinner"></div>
+        </button>
+
+        <!-- Random Button -->
+        <button class="btn-action btn-random" id="btnRandom" onclick="sendData('random')">
+          <div class="btn-icon">🎲</div>
+          <div class="btn-info">
+            <span class="btn-label">Random (50/50)</span>
+            <span class="btn-sub">Coin flip: leak or normal</span>
+          </div>
+          <div class="btn-spinner"></div>
+        </button>
+
+      </div>
+
+      <!-- Divider -->
+      <div style="border-top:1px solid var(--border); margin:18px 0 14px;"></div>
+      <div style="font-size:10px; letter-spacing:1.5px; font-weight:600; text-transform:uppercase; color:var(--cyan); margin-bottom:10px;">✨ Blind Test (Unseen by AI)</div>
+
+      <div class="control-panel">
+
+        <!-- Synthetic Normal -->
+        <button class="btn-action" style="background:linear-gradient(135deg,#005f6b,#00d4ff);color:#fff;box-shadow:0 4px 20px rgba(0,212,255,0.2);" id="btnSynthNorm" onclick="sendData('synthetic')">
+          <div class="btn-icon">🔬</div>
+          <div class="btn-info">
+            <span class="btn-label">Synthetic Normal</span>
+            <span class="btn-sub">AI-generated unseen healthy data</span>
+          </div>
+          <div class="btn-spinner"></div>
+        </button>
+
+        <!-- Synthetic Leak -->
+        <button class="btn-action" style="background:linear-gradient(135deg,#7b0a1e,#ff6b35);color:#fff;box-shadow:0 4px 20px rgba(255,107,53,0.25);" id="btnSynthLeak" onclick="sendData('synthetic_leak')">
+          <div class="btn-icon">💥</div>
+          <div class="btn-info">
+            <span class="btn-label">Synthetic Leak</span>
+            <span class="btn-sub">AI-generated unseen anomaly</span>
+          </div>
+          <div class="btn-spinner"></div>
+        </button>
+
+      </div>
+
+      <!-- API URL Config -->
+      <div class="api-config">
+        <label for="apiUrl">Backend URL</label>
+        <input
+          class="api-input"
+          id="apiUrl"
+          type="text"
+          value="http://localhost:8000"
+          placeholder="http://localhost:8000"
+        />
+        <div class="sensor-config" style="margin-top:12px;">
+          <label style="font-size:11px;color:var(--text-secondary);font-weight:500;">
+            📊 Stats
+          </label>
+          <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap;">
+            <div class="mse-box" style="font-size:12px;">
+              Requests: <strong id="reqCount">0</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Broadcast Alert -->
+      <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border);">
+        <div class="panel-title" style="margin-bottom:12px;">📢 Broadcast Alert</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <select id="broadcastZone" class="api-input" style="padding: 8px;">
+            <option value="Zone 1">Zone 1</option>
+            <option value="Zone 2">Zone 2</option>
+            <option value="Zone 3">Zone 3</option>
+            <option value="Zone 4">Zone 4</option>
+            <option value="Zone 5">Zone 5</option>
+          </select>
+          <input id="broadcastMsg" type="text" class="api-input" placeholder="Alert message..." value="Leak detected in your area!">
+          <button class="btn-action btn-leak" style="height: 40px; justify-content: center;" onclick="sendBroadcast()">
+            <span class="btn-label" style="font-size: 13px;">Send Broadcast</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- How it works -->
+      <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border);">
+        <div class="panel-title" style="margin-bottom:12px;">How It Works</div>
+        <div style="font-size:12px; color:var(--text-muted); line-height:1.8;">
+          1. Button generates <strong style="color:var(--text-secondary);">48 × 119</strong> synthetic sensor window<br>
+          2. POST to <code style="color:var(--cyan);">/api/v1/predict</code><br>
+          3. Autoencoder reconstructs the input<br>
+          4. Computes <strong style="color:var(--text-secondary);">MSE</strong> vs 95th-percentile threshold<br>
+          5. Returns anomaly flag + top sensors + zone
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       RIGHT — Results
+       ───────────────────────────────────────────────────────────── -->
+  <div class="results-grid">
+
+    <!-- Status + Confidence -->
+    <div class="results-row">
+
+      <!-- Status Card -->
+      <div class="status-card" id="statusCard" style="grid-column: 1 / -1;">
+        <div class="status-emoji" id="statusEmoji">💧</div>
+        <div class="status-info">
+          <h2 id="statusTitle" class="status-idle">AWAITING DATA</h2>
+          <p class="status-sub" id="statusSub">
+            Click one of the control buttons to send sensor data to the model.
+          </p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Metrics Row -->
+    <div class="results-row">
+
+      <!-- Confidence -->
+      <div class="metric-card">
+        <div class="metric-label">🎯 Confidence Score</div>
+        <div class="metric-value" id="confidenceValue" style="font-size:36px;">—</div>
+        <div class="confidence-bar-track">
+          <div class="confidence-bar-fill" id="confidenceFill"></div>
+        </div>
+      </div>
+
+      <!-- MSE / Threshold -->
+      <div class="metric-card">
+        <div class="metric-label">📐 Reconstruction Error</div>
+        <div id="mseValue">
+          <div class="idle-state" style="padding:12px;">
+            <span style="font-size:28px;opacity:0.3;">📊</span>
+            <span style="font-size:13px;">Run a prediction first</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Sensors + Zone Row -->
+    <div class="results-row">
+
+      <!-- Top Sensors -->
+      <div class="metric-card">
+        <div class="metric-label">🔍 Top Anomalous Sensors</div>
+        <div class="sensor-tags" id="sensorTags">
+          <span style="font-size:13px;color:var(--text-muted);">No data yet</span>
+        </div>
+      </div>
+
+      <!-- Zone -->
+      <div class="metric-card">
+        <div class="metric-label">📍 Affected Zone</div>
+        <div class="zone-badge" id="zoneBadge">— No Zone —</div>
+        <div class="zone-sub" id="zoneSub">Run a prediction to identify the zone</div>
+      </div>
+
+    </div>
+
+    <!-- Reconstruction Error Chart -->
+    <div class="panel chart-section">
+      <div class="chart-header">
+        <div class="panel-title" style="margin-bottom:0;">
+          Per-Sensor Reconstruction Error
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item">
+            <div class="legend-dot" style="background:rgba(255,71,86,0.85);"></div>
+            Top sensors
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:rgba(255,145,0,0.7);"></div>
+            Above threshold
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:rgba(0,212,255,0.5);"></div>
+            Normal
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-wrapper">
+        <div class="chart-placeholder" id="chartPlaceholder">
+          <div class="chart-placeholder-icon">📊</div>
+          <span>Send sensor data to see reconstruction errors</span>
+        </div>
+        <canvas id="errorChart"></canvas>
+      </div>
+    </div>
+
+  </div><!-- /results-grid -->
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       LIVE NETWORK MAP
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="network-map-section">
+
+    <div class="network-map-header">
+      <div class="panel-title" style="margin-bottom:0;">🗺️ Live Network Map</div>
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <!-- Auto-sim toggle -->
+        <button class="autosim-btn" id="autoSimBtn" onclick="toggleAutoSim()">
+          <span class="autosim-icon" id="autoSimIcon">▶</span>
+          <span id="autoSimLabel">Auto-Simulate</span>
+          <span class="autosim-countdown" id="autoSimCountdown" style="display:none;"></span>
+        </button>
+        <!-- LIVE badge -->
+        <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      </div>
+    </div>
+
+    <!-- ── SVG Network Map ──────────────────────────────────────── -->
+    <div class="map-svg-wrapper">
+      <!--
+        viewBox: 800 × 340
+        Layout:
+          Zone 1 (Intake)      x=40   y=30   w=160 h=90
+          Zone 2 (Middle)      x=310  y=30   w=160 h=90
+          Zone 3 (Main Grid)   x=40   y=200  w=160 h=90
+          Zone 4 (High Press)  x=310  y=200  w=160 h=90
+          Zone 5 (Remote)      x=580  y=115  w=160 h=110
+        Pipes:  Z1→Z2, Z1→Z3, Z2→Z4, Z3→Z4, Z4→Z5
+      -->
+      <svg viewBox="0 0 800 340" xmlns="http://www.w3.org/2000/svg" aria-label="Water network zone health map">
+
+        <!-- ── Pipe base tracks (static dim lines) ── -->
+        <!-- Z1 → Z2 -->
+        <line class="pipe-line" x1="200" y1="75" x2="310" y2="75"/>
+        <!-- Z1 → Z3 -->
+        <line class="pipe-line" x1="120" y1="120" x2="120" y2="200"/>
+        <!-- Z2 → Z4 -->
+        <line class="pipe-line" x1="390" y1="120" x2="390" y2="200"/>
+        <!-- Z3 → Z4 -->
+        <line class="pipe-line" x1="200" y1="245" x2="310" y2="245"/>
+        <!-- Z4 → Z5 -->
+        <line class="pipe-line" x1="470" y1="245" x2="580" y2="175"/>
+
+        <!-- ── Animated flow overlays ── -->
+        <!-- Z1 → Z2 -->
+        <line id="pipe-z1-z2" class="pipe-flow status-green" x1="200" y1="75" x2="310" y2="75"/>
+        <!-- Z1 → Z3 -->
+        <line id="pipe-z1-z3" class="pipe-flow status-green" x1="120" y1="120" x2="120" y2="200"/>
+        <!-- Z2 → Z4 -->
+        <line id="pipe-z2-z4" class="pipe-flow status-green" x1="390" y1="120" x2="390" y2="200"/>
+        <!-- Z3 → Z4 -->
+        <line id="pipe-z3-z4" class="pipe-flow status-green" x1="200" y1="245" x2="310" y2="245"/>
+        <!-- Z4 → Z5 -->
+        <line id="pipe-z4-z5" class="pipe-flow status-green" x1="470" y1="245" x2="580" y2="175"/>
+
+        <!-- ══ ZONE 1 ══ -->
+        <rect id="zone1-node"   class="zone-node   status-green" x="40"  y="30"  width="160" height="90" rx="12"/>
+        <rect id="zone1-border" class="zone-border status-green" x="40"  y="30"  width="160" height="90" rx="12"/>
+        <text class="zone-label-icon"    x="120" y="57"  id="zone1-icon">💧</text>
+        <text class="zone-label-title"   x="120" y="82">Zone 1</text>
+        <text class="zone-label-sensors" x="120" y="98">n1 – n30 · Intake</text>
+
+        <!-- ══ ZONE 2 ══ -->
+        <rect id="zone2-node"   class="zone-node   status-green" x="310" y="30"  width="160" height="90" rx="12"/>
+        <rect id="zone2-border" class="zone-border status-green" x="310" y="30"  width="160" height="90" rx="12"/>
+        <text class="zone-label-icon"    x="390" y="57"  id="zone2-icon">💧</text>
+        <text class="zone-label-title"   x="390" y="82">Zone 2</text>
+        <text class="zone-label-sensors" x="390" y="98">n31 – n60 · Middle</text>
+
+        <!-- ══ ZONE 3 ══ -->
+        <rect id="zone3-node"   class="zone-node   status-green" x="40"  y="200" width="160" height="90" rx="12"/>
+        <rect id="zone3-border" class="zone-border status-green" x="40"  y="200" width="160" height="90" rx="12"/>
+        <text class="zone-label-icon"    x="120" y="227" id="zone3-icon">💧</text>
+        <text class="zone-label-title"   x="120" y="252">Zone 3</text>
+        <text class="zone-label-sensors" x="120" y="268">n61 – n90 · Main Grid</text>
+
+        <!-- ══ ZONE 4 ══ -->
+        <rect id="zone4-node"   class="zone-node   status-green" x="310" y="200" width="160" height="90" rx="12"/>
+        <rect id="zone4-border" class="zone-border status-green" x="310" y="200" width="160" height="90" rx="12"/>
+        <text class="zone-label-icon"    x="390" y="227" id="zone4-icon">💧</text>
+        <text class="zone-label-title"   x="390" y="252">Zone 4</text>
+        <text class="zone-label-sensors" x="390" y="268">n91 – n120 · High Press</text>
+
+        <!-- ══ ZONE 5 ══ -->
+        <rect id="zone5-node"   class="zone-node   status-green" x="580" y="115" width="160" height="110" rx="12"/>
+        <rect id="zone5-border" class="zone-border status-green" x="580" y="115" width="160" height="110" rx="12"/>
+        <text class="zone-label-icon"    x="660" y="145" id="zone5-icon">💧</text>
+        <text class="zone-label-title"   x="660" y="172">Zone 5</text>
+        <text class="zone-label-sensors" x="660" y="190">n121 – n300</text>
+        <text class="zone-label-sensors" x="660" y="205">Extended / Remote</text>
+
+      </svg>
+    </div><!-- /map-svg-wrapper -->
+
+    <!-- ── Zone Stat Cards ──────────────────────────────────────── -->
+    <div class="zone-stat-cards">
+
+      <!-- Zone 1 -->
+      <div class="zone-stat-card status-green" id="zcard-Zone 1">
+        <div class="zone-card-header">
+          <span class="zone-card-name">Zone 1</span>
+          <div class="zone-card-dot status-green" id="zdot-Zone 1"></div>
+        </div>
+        <div class="zone-card-desc">Intake / Primary Pipes</div>
+        <div class="zone-card-stat">
+          <span class="zone-card-confidence status-green" id="zconf-Zone 1">—</span>
+          <span class="zone-card-stat-label">conf</span>
+        </div>
+        <div class="zone-card-ts" id="zts-Zone 1">No data yet</div>
+      </div>
+
+      <!-- Zone 2 -->
+      <div class="zone-stat-card status-green" id="zcard-Zone 2">
+        <div class="zone-card-header">
+          <span class="zone-card-name">Zone 2</span>
+          <div class="zone-card-dot status-green" id="zdot-Zone 2"></div>
+        </div>
+        <div class="zone-card-desc">Middle Distribution</div>
+        <div class="zone-card-stat">
+          <span class="zone-card-confidence status-green" id="zconf-Zone 2">—</span>
+          <span class="zone-card-stat-label">conf</span>
+        </div>
+        <div class="zone-card-ts" id="zts-Zone 2">No data yet</div>
+      </div>
+
+      <!-- Zone 3 -->
+      <div class="zone-stat-card status-green" id="zcard-Zone 3">
+        <div class="zone-card-header">
+          <span class="zone-card-name">Zone 3</span>
+          <div class="zone-card-dot status-green" id="zdot-Zone 3"></div>
+        </div>
+        <div class="zone-card-desc">Main Distribution Grid</div>
+        <div class="zone-card-stat">
+          <span class="zone-card-confidence status-green" id="zconf-Zone 3">—</span>
+          <span class="zone-card-stat-label">conf</span>
+        </div>
+        <div class="zone-card-ts" id="zts-Zone 3">No data yet</div>
+      </div>
+
+      <!-- Zone 4 -->
+      <div class="zone-stat-card status-green" id="zcard-Zone 4">
+        <div class="zone-card-header">
+          <span class="zone-card-name">Zone 4</span>
+          <div class="zone-card-dot status-green" id="zdot-Zone 4"></div>
+        </div>
+        <div class="zone-card-desc">End Net / High Pressure</div>
+        <div class="zone-card-stat">
+          <span class="zone-card-confidence status-green" id="zconf-Zone 4">—</span>
+          <span class="zone-card-stat-label">conf</span>
+        </div>
+        <div class="zone-card-ts" id="zts-Zone 4">No data yet</div>
+      </div>
+
+      <!-- Zone 5 -->
+      <div class="zone-stat-card status-green" id="zcard-Zone 5">
+        <div class="zone-card-header">
+          <span class="zone-card-name">Zone 5</span>
+          <div class="zone-card-dot status-green" id="zdot-Zone 5"></div>
+        </div>
+        <div class="zone-card-desc">Extended / Remote Network</div>
+        <div class="zone-card-stat">
+          <span class="zone-card-confidence status-green" id="zconf-Zone 5">—</span>
+          <span class="zone-card-stat-label">conf</span>
+        </div>
+        <div class="zone-card-ts" id="zts-Zone 5">No data yet</div>
+      </div>
+
+    </div><!-- /zone-stat-cards -->
+
+  </div><!-- /network-map-section -->
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       GEOGRAPHIC LEAK MAP — Leaflet.js on Alexandria, Egypt
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="geo-map-section">
+
+    <div class="network-map-header">
+      <div>
+        <div class="panel-title" style="margin-bottom:4px;">📍 Geographic Leak Map</div>
+        <div style="font-size:11px; color:var(--text-muted);">Cairo Water Distribution Network — zones mapped to real districts</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <!-- Fly-to toggle -->
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-secondary);">
+          <input type="checkbox" id="autoFlyCheck" checked style="accent-color:var(--cyan); width:14px; height:14px; cursor:pointer;" />
+          <label for="autoFlyCheck" style="cursor:pointer; user-select:none;">Auto-fly to leak</label>
+        </div>
+        <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      </div>
+    </div>
+
+    <!-- Leaflet map container -->
+    <div id="geoMap"></div>
+
+    <!-- Zone legend -->
+    <div class="geo-legend">
+      <div class="geo-legend-item"><div class="geo-legend-dot" style="background:var(--green);"></div>Normal</div>
+      <div class="geo-legend-item"><div class="geo-legend-dot" style="background:var(--orange);"></div>Warning</div>
+      <div class="geo-legend-item"><div class="geo-legend-dot" style="background:var(--red);"></div>Leak Detected</div>
+      <div class="geo-legend-item" style="margin-left:auto; color:var(--text-muted); font-size:10px;">© OpenStreetMap contributors</div>
+    </div>
+
+  </div><!-- /geo-map-section -->
+
+  <!-- ─────────────────────────────────────────────────────────────
+       BOTTOM ROW — Timeseries + Request Log
+       ───────────────────────────────────────────────────────────── -->
+  <div class="bottom-row">
+
+    <!-- Timeseries Chart -->
+    <div class="panel">
+      <div class="panel-title">Live Timeseries — Pressure &amp; Flow (24h)</div>
+      <div class="chart-wrapper" style="height:200px;">
+        <canvas id="timeseriesChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Request Log -->
+    <div class="panel">
+      <div class="panel-title">Request Log</div>
+      <div class="log-container" id="logContainer">
+        <div class="log-entry" style="border-left-color:var(--text-muted);">
+          <span class="log-time">--:--:--</span>
+          <span class="log-msg" style="color:var(--text-muted);">Waiting for first prediction…</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<!-- Add Engineer Modal -->
+<div id="engModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+  <div class="panel" style="width: 400px; max-width: 90%; background: var(--bg-primary); border: 1px solid var(--border);">
+    <div class="panel-title" style="margin-bottom: 20px;">Create Engineer Account</div>
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <input id="engName" type="text" class="api-input" placeholder="Full Name" />
+      <input id="engId" type="text" class="api-input" placeholder="Engineer ID (e.g. ENG-001)" />
+      <input id="engPass" type="password" class="api-input" placeholder="Password" />
+      <div id="engMsg" style="font-size: 13px; font-weight: 500; display: none; padding: 10px; border-radius: 6px;"></div>
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button class="btn-action" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid var(--border);" onclick="closeEngModal()">Cancel</button>
+        <button class="btn-action btn-random" id="engSubmitBtn" onclick="registerEngineer()">Register</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
